@@ -4,6 +4,7 @@
 #include <cmath>
 #include <iostream>
 #include <unordered_set>
+#include <cblas.h>
 
 //----------------------------------
 // tensor constructors + utils
@@ -149,15 +150,19 @@ std::shared_ptr<Tensor> matmul(
         a->requires_grad || b->requires_grad
     );
 
-    // perform matmul
-    for (size_t i = 0; i < m; ++i) {
-        for (size_t k = 0; k < n; ++k) {
-            float a_val = (*a)(i, k);
-            for (size_t j = 0; j < p; ++j) {
-                (*out)(i, j) += a_val * (*b)(k, j);
-            }
-        }
-    }
+    // perform matmul with cblas
+    cblas_sgemm(
+        CblasRowMajor, CblasNoTrans, CblasNoTrans,
+        m, p, n, // sizes
+        1.0f, // alpha
+        a->data.data(),
+        n,
+        b->data.data(),
+        p,
+        0.0f, // beta
+        out->data.data(),
+        p
+    ); 
 
     // save parents in graph
     out->_prev = {a, b};
@@ -172,25 +177,31 @@ std::shared_ptr<Tensor> matmul(
 
             // dA = dC · B^T
             if (a->requires_grad) {
-                for (size_t i = 0; i < m; ++i)
-                    for (size_t k = 0; k < n; ++k) {
-                        float grad_val = 0.0f;
-                        for (size_t j = 0; j < p; ++j)
-                            grad_val += out->grad[i * p + j] * (*b)(k, j);
-                        a->grad[i * n + k] += grad_val;
-                    }
+                cblas_sgemm(
+                    CblasRowMajor, CblasNoTrans, CblasTrans,
+                    m, n, p,
+                    1.0f,
+                    out->grad.data(), // dC
+                    p,
+                    b->data.data(), // B
+                    p, 
+                    1.0f, // += (write to A grad with accumulation)
+                    a->grad.data(), // A
+                    n
+                );
             }
 
             // dB = A^T · dC
             if (b->requires_grad) {
-                for (size_t k = 0; k < n; ++k) {
-                    for (size_t j = 0; j < p; ++j) {
-                        float grad_val = 0.0f;
-                        for (size_t i = 0; i < m; ++i)
-                            grad_val += (*a)(i, k) * out->grad[i * p + j];
-                        b->grad[k * p + j] += grad_val;
-                    }
-                }
+                cblas_sgemm(
+                    CblasRowMajor, CblasTrans, CblasNoTrans,
+                    n, p, m,
+                    1.0f,
+                    a->data.data(), // A
+                    n,
+                    out->grad.data(), p, // dC
+                    1.0f, // += (write to B grad with accumulation)
+                    b->grad.data(), p); // dB 
             }
         };
     } else {

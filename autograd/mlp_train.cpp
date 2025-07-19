@@ -79,7 +79,7 @@ struct MLP {
 
 int main() {
     const size_t in_dim = 2;
-    const size_t hidden_dim = 128;
+    const size_t hidden_dim = 32;
     const size_t out_dim = 2;
 
     MLP net(in_dim, hidden_dim, out_dim);
@@ -94,7 +94,7 @@ int main() {
     
     auto data = make_two_moons(1000, 0.2f);
 
-    const float lr = 0.01f;
+    const float lr = 0.1f;
     const size_t epochs = 200;
 
     for (size_t epoch = 0; epoch < epochs; ++epoch) {
